@@ -1,4 +1,4 @@
-# ResumeAssistant 💻
+# Resume Assistant 💻
 
 ResumeAssistant is a GPT-powered AI assistant designed to streamline your job application process. With features to enhance resumes, generate cover letters, and prepare interview Q&As, this tool helps you apply to jobs more efficiently.
 
