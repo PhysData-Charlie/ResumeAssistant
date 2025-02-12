@@ -1,8 +1,14 @@
+### AI Resume Assistant v.1.1
+
 import streamlit as st
 import openai
 import json
 from datetime import datetime
 import os
+from io import StringIO, BytesIO
+from PyPDF2 import PdfReader
+from docx import Document
+from pathlib import Path
 
 class ResumeAssistant():
 
@@ -132,19 +138,23 @@ class ResumeAssistant():
         
         return response
     
-    def read_pdf(self):
-        return None
-    
-    def prepare_letter(self):
-        return None
-    
-    def prepare_questions(self):
-        return None
-    
     def logger(self, message):
         if self.log:
             with open(self.log_file, 'a') as f:
                 f.write(message)
+
+def extract_data(file, ext):
+    data = []
+    if ext == 'pdf':
+        data = []
+        pdf_reader = PdfReader(file)
+        for page in pdf_reader.pages:
+            data.append(page.extract_text())
+    elif ext == 'doc':
+        document = Document(data)
+        for paragraph in document.paragraphs:
+            data.append(paragraph.text)
+    return data
 
 
 # initialization
@@ -195,11 +205,11 @@ with st.sidebar:
     st.text('Warning: generating a new response will overwrite any previous data.')
 
 # main form
-st.title('Resume Assistant App v.1.0')
+st.title('Resume Assistant App v.1.1')
 
 # user input
 if 'name' not in st.session_state:
-    name = st.text_input("Name: write your name", "John Doe")
+    name = st.text_input("Name: write your name for cover letter/interview", "John Doe")
     st.session_state['name'] = name
 else:
     name = st.text_input("Name: write your name", st.session_state['name'])
@@ -209,17 +219,36 @@ if 'field' not in st.session_state:
 else:
     field = st.text_input("Title: Specify your job title (e.g. Data Scientist, Data Analyst, Machine Learning Engineer)", st.session_state['field'])
 if 'resume_txt' not in st.session_state:
-    resume_txt = st.text_area("Resume: Copy-and-paste your resume here", '')
+    resume_txt = st.text_area("Resume: Copy-and-paste your resume here or upload a file:", '', height=200)
+    upload_resume = st.file_uploader('Upload resume (PDF only)')
     st.session_state['resume_txt'] = resume_txt
 else:
-    resume_txt = st.text_area("Resume: Copy-and-paste your resume here:", st.session_state['resume_txt'])
+    resume_txt = st.text_area("Resume: Copy-and-paste your resume here or upload a file:", st.session_state['resume_txt'], height=200)
+    upload_resume = st.file_uploader('Upload resume (PDF only)')
 if 'job_txt' not in st.session_state:
-    job_txt = st.text_area("Job Description: Copy-and-past the job description here:", '')
+    job_txt = st.text_area("Job Description: Copy-and-past the job description here:", '', height=200)
     st.session_state['job_txt'] = job_txt
 else:
-    job_txt = st.text_area("Job Description: Copy-and-past the job description here:", st.session_state['job_txt'])
+    job_txt = st.text_area("Job Description: Copy-and-past the job description here:", st.session_state['job_txt'], height=200)
 
+# upload action
+if upload_resume:
+    file_ext = Path(upload_resume.name).suffix
+    st.session_state['resume_file'] = upload_resume.name
 
+    if file_ext == '.pdf':
+        resume_txt = extract_data(upload_resume, 'pdf')
+        st.session_state['resume_upl'] = resume_txt
+    # elif (file_ext == '.doc') | (file_ext == '.docx'):
+    #     resume_txt = extract_data(upload_resume, 'doc')
+    #     st.session_state['resume_upl'] = resume_txt
+    else:
+        st.warning('Only PDF files are supported for resume!')
+else:
+    if 'resume_upl' in st.session_state:
+        resume_txt = st.session_state['resume_upl']
+        st.write('Using uploaded file: ' + st.session_state['resume_file'])
+   
 # action buttons
 col1, col2, col3 = st.columns(3)
 
@@ -245,7 +274,7 @@ if action1:
         st.warning('Title cannot be empty!')
     else:
         flag += 1
-    if resume_txt == '':
+    if (resume_txt == ''):
         st.warning('Resume cannot be empty!')
     else:
         flag += 1
