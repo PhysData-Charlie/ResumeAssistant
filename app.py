@@ -5,8 +5,8 @@ import openai
 import json
 from datetime import datetime
 import os
-from io import StringIO, BytesIO
-from PyPDF2 import PdfReader
+from io import BytesIO
+from PyPDF2 import PdfReader, PdfWriter
 from docx import Document
 from pathlib import Path
 
@@ -57,16 +57,16 @@ class ResumeAssistant():
 
         {self.resume}
 
-        Suggest potential improvements for the CV. You need to consider the following:
+        Suggest potential improvements for the CV and make it ATS-compliant. You need to consider the following:
 
-        - When possible, rearrange or rephrase sentences so that the resume aligns as closely as possible with the job description.
-        - When possible, bullet points should follow the STAR format.
+        - If needed, rearrange or rephrase sentences so that the resume aligns as closely as possible with the job description.
+        - If needed, bullet points should follow the STAR format.
         - Improve wording but do not generate new information, modify only based on the resume.
-        - Consider that the CV will be pased through an ATS filter and thus must comply for readability.\
-        - Do not increase the maxium word count, resume should fit within 2 pages (between 700 and 1200 words).
+        - Consider that the CV will be pased through an ATS filter and thus must comply for readability.
         '''
 
         return prompt
+    
 
     def prompt_letter(self):
 
@@ -79,13 +79,15 @@ class ResumeAssistant():
 
         {self.resume}
 
-        Prepare a motivation letter to apply for this job, with applicant name {self.name}. Only write the contents of the letter, do not worry about sender/recipient/adress information.
+        Prepare a motivation letter to apply for this job, with applicant name {self.name}, and addressed to the company
+        and positions mentioned in the job description. If this information is not available, mark it as XXXX (e.g. company XXXX).
+        Only write the contents of the letter, omit sender/recipient/adress information.
 
         '''
 
         return prompt
 
-    def prompt_question(self):
+    def prompt_question_beha(self):
 
         prompt = f'''
         Based on the following job description:
@@ -96,11 +98,25 @@ class ResumeAssistant():
 
         {self.resume}
 
-        Prepare a total of 9 questions to prepare for a job interview. Provide both the questions and potential answers based on the information from the resume.
+        Prepare a total of 5 general & behavioral questions to prepare for a job interview. 
+        Provide both the questions and potential answers based on the information provided before.
+        '''
 
-        - 3 general questions
-        - 3 behavioral questions
-        - 3 technical questions
+        return prompt
+    
+    def prompt_question_tech(self):
+
+        prompt = f'''
+        Based on the following job description:
+        
+        {self.job_desc}
+
+        And based on the following resume:
+
+        {self.resume}
+
+        Prepare a total of 5 technical & role-specific questions to prepare for a job interview. 
+        Provide both the questions and potential answers based on the information provided before.
         '''
 
         return prompt
@@ -151,7 +167,7 @@ def extract_data(file, ext):
         for page in pdf_reader.pages:
             data.append(page.extract_text())
     elif ext == 'doc':
-        document = Document(data)
+        document = Document(file)
         for paragraph in document.paragraphs:
             data.append(paragraph.text)
     return data
@@ -205,7 +221,7 @@ with st.sidebar:
     st.text('Warning: generating a new response will overwrite any previous data.')
 
 # main form
-st.title('Resume Assistant App v.1.1')
+st.title('Resume Assistant App v.1.2')
 
 # user input
 if 'name' not in st.session_state:
@@ -220,11 +236,11 @@ else:
     field = st.text_input("Title: Specify your job title (e.g. Data Scientist, Data Analyst, Machine Learning Engineer)", st.session_state['field'])
 if 'resume_txt' not in st.session_state:
     resume_txt = st.text_area("Resume: Copy-and-paste your resume here or upload a file:", '', height=200)
-    upload_resume = st.file_uploader('Upload resume (PDF only)')
+    upload_resume = st.file_uploader('Upload resume (PDF or DOC only)')
     st.session_state['resume_txt'] = resume_txt
 else:
     resume_txt = st.text_area("Resume: Copy-and-paste your resume here or upload a file:", st.session_state['resume_txt'], height=200)
-    upload_resume = st.file_uploader('Upload resume (PDF only)')
+    upload_resume = st.file_uploader('Upload resume (PDF or DOC only)')
 if 'job_txt' not in st.session_state:
     job_txt = st.text_area("Job Description: Copy-and-past the job description here:", '', height=200)
     st.session_state['job_txt'] = job_txt
@@ -239,9 +255,9 @@ if upload_resume:
     if file_ext == '.pdf':
         resume_txt = extract_data(upload_resume, 'pdf')
         st.session_state['resume_upl'] = resume_txt
-    # elif (file_ext == '.doc') | (file_ext == '.docx'):
-    #     resume_txt = extract_data(upload_resume, 'doc')
-    #     st.session_state['resume_upl'] = resume_txt
+    elif (file_ext == '.doc') | (file_ext == '.docx'):
+        resume_txt = extract_data(upload_resume, 'doc')
+        st.session_state['resume_upl'] = resume_txt
     else:
         st.warning('Only PDF files are supported for resume!')
 else:
@@ -250,14 +266,16 @@ else:
         st.write('Using uploaded file: ' + st.session_state['resume_file'])
    
 # action buttons
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    action1 = st.button('How to Improve your Resume')
+    action1 = st.button('Improve your Resume')
 with col2:
-    action2 = st.button('Generate a Cover Letter')
+    action2 = st.button('Create a Cover Letter')
 with col3:
-    action3 = st.button('Prepare Q&A for an interview')
+    action3 = st.button('Prepare for Interview (General Q&A)')
+with col4:
+    action4 = st.button('Prepare for Interview (Specific Q&A)')
 
 if action1:
     flag = 0
@@ -297,7 +315,7 @@ if action1:
             elif res == 402:
                 st.warning('Error connection to OpenAI. Please try again later or check OpenAI status. (Code error 402)')
         else:
-            st.text_area('Suggestions to improve your resume:', res, height=700)
+            st.text_area('Improvements for your resume:', res, height=700)
             if 'response' not in st.session_state:
                 st.session_state['response'] = res
 
@@ -339,7 +357,7 @@ if action2:
                 elif res == 402:
                     st.warning('Error connection to OpenAI. Please try again later or check OpenAI status. (Code error 402)')
             else:
-                st.text_area('Suggested cover letter:', res, height=700)
+                st.text_area('Application cover letter:', res, height=700)
                 if 'response' not in st.session_state:
                     st.session_state['response'] = res
 
@@ -372,7 +390,7 @@ if action3:
             assistant.set_apikey(st.session_state['api_key'])
             assistant.config_model(st.session_state['temperature'], st.session_state['max_tokens'])
             assistant.set_info(name, field, resume_txt, job_txt)
-            prompt = assistant.prompt_question()
+            prompt = assistant.prompt_question_beha()
             res = assistant.get_response(prompt)
             if isinstance(res, int):
                 if res == 401:
@@ -381,14 +399,56 @@ if action3:
                 elif res == 402:
                     st.warning('Error connection to OpenAI. Please try again later or check OpenAI status. (Code error 402)')
             else:
-                st.text_area("Suggested Q&A for your job interview", res, height=700)
+                st.text_area("Q&A for job interview (general)", res, height=700)
+                if 'response' not in st.session_state:
+                    st.session_state['response'] = res
+
+if action4:
+    flag = 0
+    
+    if api_key == '':
+        st.warning('Please enter API key to proceed!')
+    else:
+        flag += 1 
+    if name == '':
+        st.warning('Name cannot be empty!')
+    else:
+        flag += 1
+    if field == '':
+        st.warning('Title cannot be empty!')
+    else:
+        flag += 1
+    if resume_txt == '':
+        st.warning('Resume cannot be empty!')
+    else:
+        flag += 1
+    if job_txt == '':
+        st.warning('Job description cannot be empty!')
+    else:
+        flag += 1
+    
+    if flag == 5:
+        with st.spinner('Generating...'):
+            assistant.set_apikey(st.session_state['api_key'])
+            assistant.config_model(st.session_state['temperature'], st.session_state['max_tokens'])
+            assistant.set_info(name, field, resume_txt, job_txt)
+            prompt = assistant.prompt_question_tech()
+            res = assistant.get_response(prompt)
+            if isinstance(res, int):
+                if res == 401:
+                    st.warning('Error connecting with API Key provided. Please check that your API Key is correct and active. (Code error 401)')
+                    st.warning('API_KEY:'+ st.session_state['api_key'])
+                elif res == 402:
+                    st.warning('Error connection to OpenAI. Please try again later or check OpenAI status. (Code error 402)')
+            else:
+                st.text_area("Q&A for job interview (general)", res, height=700)
                 if 'response' not in st.session_state:
                     st.session_state['response'] = res
 
 # download
 if 'response' in st.session_state:
     st.download_button(
-        label='Download results as TXT',
+        label='Download results (TXT)',
         data=st.session_state['response'],
         file_name=f'results_{identifier}.txt',
         mime='text/csv'
